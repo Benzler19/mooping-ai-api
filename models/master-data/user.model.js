@@ -1,172 +1,108 @@
-// models/base/school.model.js
-const db = require("../../configs/db.json");
-const { v4: uuidv4 } = require("uuid");
-const saltRounds = 10;
-const bcrypt = require("bcrypt");
+const db = require("../../configs/db.json")
+const { v4: uuidv4 } = require("uuid")
+const bcrypt = require("bcrypt")
+const saltRounds = 10
 
 const Task = function (task) {
-  this.task = task.task;
-  this.status = task.status;
-  this.created_at = new Date();
-};
+    this.task = task.task
+}
 
-Task.getUserBy = function getUserBy(data, connection) {
-  return new Promise((resolve, reject) => {
-    const { filters, sorter, pagination } = connection.generatePageBy(data.params);
-    let sql = `
-        SELECT 
-        tb1.user_table_uuid,
-        tb1.username,
-        tb1.firstname,
-        tb1.lastname,
-        tb1.is_active,
-        tb2.role_name
-        FROM ${db["base"]}.tb_user AS tb1
-        LEFT JOIN ${db["base"]}.tb_role AS tb2 ON tb1.role_id = tb2.role_id
-        WHERE 
-         ${filters}
-        ${sorter}
-        ${pagination}
-        `;
-    connection.query(sql, (err, res) => {
-      if (err) {
-        reject({ data: [], require: false, err: err });
-      } else {
-        if (pagination === "") {
-          resolve({ data: res, require: true });
-        } else {
-          sql = `SELECT COUNT (*) AS total FROM tb_user WHERE  ${filters}`;
-          connection.query(sql, function (err, res_total) {
-            if (err) {
-              reject({ data: [], require: false, err: err });
-            } else {
-              resolve({ data: res, total: res_total[0].total, require: true });
-            }
-          });
-        }
-      }
-    });
-  });
-};
-
-Task.getUserById = function getUserById(data, connection) {
-  return new Promise((resolve, reject) => {
-    let sql = `
-        SELECT 
-        tb1.*,
-        tb2.*
-        FROM ${db["base"]}.tb_user AS tb1
-        LEFT JOIN ${db["base"]}.tb_role AS tb2 ON tb1.role_id = tb2.role_id
-        WHERE tb1.user_table_uuid = 
-        ${connection.escape(data.user_table_uuid)}`;
-    connection.query(sql, (err, res) => {
-      if (err) {
-        reject({ data: [], require: false, err: err });
-      } else {
-        resolve({ data: res, require: true });
-      }
-    });
-  });
-};
-Task.insertUser = function insertUser(data, connection) {
-  return new Promise((resolve, reject) => {
-    const user_table_uuid = uuidv4();
-    bcrypt.hash(data.password, saltRounds, function (err, hashedPassword) {
-      if (err) {
-        reject({ data: [], require: false, err: err });
-      } else {
-        let sql = `INSERT INTO ${db["base"]}.tb_user SET 
-                    user_table_uuid = ${connection.escape(user_table_uuid)}, 
-                    username = ${connection.escape(data.username)}, 
-                    password = ${connection.escape(hashedPassword)}, 
-                    firstname = ${connection.escape(data.firstname)}, 
-                    lastname = ${connection.escape(data.lastname)}, 
-                    role_id = ${connection.escape(data.role_id)},
-                    is_active = 1,
-                    create_date = now(),
-                    create_by = ${connection.escape(data.create_by)}
-                    `;
-        connection.query(sql, function (err, res) {
-          if (err) {
-            reject({ data: [], require: false, err: err });
-          } else {
-            resolve({ data: [], require: true });
-          }
-        });
-      }
-    });
-  });
-};
-Task.checkLogin = function checkLogin(data, connection) {
-  return new Promise((resolve, reject) => {
-    let sql = `
-                  SELECT * 
-                  FROM ${db["base"]}.tb_user AS tb1 LEFT JOIN ${db["base"]}.tb_role AS tb2 ON tb1.role_id = tb2.role_id
-                  WHERE username = ${connection.escape(data.username)}
-                  AND tb1.is_active = 1; 
-              `;
-    connection.query(sql, function (err, res) {
-      if (err) {
-        reject({ data: [], require: false, err: err });
-      } else {
-        if (res.length === 0) {
-          resolve({ data: [], require: false, err: "User not found" });
-        } else {
-          const hashedPassword = res[0].password;
-          bcrypt.compare(data.password, hashedPassword, function (err, match) {
-            if (err) {
-              reject({ data: [], require: false, err: err });
-            } else if (!match) {
-              resolve({ data: [], require: false, err: "Incorrect password" });
-            } else {
-              res[0].password = "อยากขาวทักแชท";
-              resolve({ data: res, require: true });
-            }
-          });
-        }
-      }
-    });
-  });
-};
-
-Task.updateUserById = function updateUserById(data, connection) {
-  return new Promise((resolve, reject) => {
-    let str_repass = "";
-    if (data.password != "" && data.password != null) {
-      let newPass = bcrypt.hashSync(data.password, saltRounds);
-      str_repass += `password = ${connection.escape(newPass)},`;
+Task.getUserBy = async function (data, connection) {
+    try {
+        const { filters, sorter, pagination, params } = connection.generatePageBy(data.params)
+        const sql = `
+            SELECT user_id, user_uuid, username, full_name, status, create_date
+            FROM ${db["base"]}.tb_user
+            WHERE ${filters}
+            ${sorter}
+            ${pagination}
+        `
+        const [res] = await connection.query(sql, params)
+        if (pagination === "") return { data: res, require: true }
+        const [res_total] = await connection.query(`SELECT COUNT(*) AS total FROM ${db["base"]}.tb_user WHERE ${filters}`, params)
+        return { data: res, total: res_total[0].total, require: true }
+    } catch (err) {
+        throw { data: [], require: false, err }
     }
-    let sql = `
-              UPDATE ${db["base"]}.tb_user SET 
-              username = ${connection.escape(data.username)}, 
-              ${str_repass}
-              firstname = ${connection.escape(data.firstname)}, 
-              lastname = ${connection.escape(data.lastname)}, 
-              role_id = ${connection.escape(data.role_id)},
-              update_date = now(),
-              update_by = ${connection.escape(data.update_by)}
-              WHERE user_table_uuid = ${connection.escape(data.user_table_uuid)}`
-    connection.query(sql, (err, res) => {
-      if (err) {
-        reject({ data: [], require: false, err: err });
-      } else {
-        resolve({ data: res, require: true });
-      }
-    });
-  });
-};
+}
 
-Task.deleteUserById = function deleteUserById(data, connection) {
-  return new Promise((resolve, reject) => {
-    let sql = `DELETE FROM ${db["base"]}.tb_user WHERE user_table_uuid = ${connection.escape(data.user_table_uuid)}`;
-    connection.query(sql, (err, res) => {
-      if (err) {
-        reject({ data: [], require: false, err: err });
-      } else {
-        resolve({ data: res, require: true });
-      }
-    });
-  });
-};
+Task.getUserById = async function (data, connection) {
+    try {
+        const sql = `SELECT user_id, user_uuid, username, full_name, status FROM ${db["base"]}.tb_user WHERE user_id = ${connection.escape(data.user_id)}`
+        const [res] = await connection.query(sql)
+        return { data: res, require: true }
+    } catch (err) {
+        throw { data: [], require: false, err }
+    }
+}
 
-module.exports = Task;
+Task.insertUser = async function (data, connection) {
+    try {
+        const user_uuid = uuidv4()
+        const hashedPassword = await bcrypt.hash(data.password, saltRounds)
+        const sql = `
+            INSERT INTO ${db["base"]}.tb_user SET
+            user_uuid   = ${connection.escape(user_uuid)},
+            username    = ${connection.escape(data.username)},
+            password    = ${connection.escape(hashedPassword)},
+            full_name   = ${connection.escape(data.full_name)},
+            status      = 1,
+            create_date = NOW(),
+            create_by   = ${connection.escape(data.create_by)}
+        `
+        const [res] = await connection.query(sql)
+        return { data: { user_id: res.insertId, user_uuid }, require: true }
+    } catch (err) {
+        throw { data: [], require: false, err }
+    }
+}
+
+Task.checkLogin = async function (data, connection) {
+    try {
+        const sql = `SELECT * FROM ${db["base"]}.tb_user WHERE username = ${connection.escape(data.username)} AND status = 1`
+        const [res] = await connection.query(sql)
+        if (res.length === 0) return { data: [], require: false, err: "ไม่พบผู้ใช้งาน" }
+        const match = await bcrypt.compare(data.password, res[0].password)
+        if (!match) return { data: [], require: false, err: "รหัสผ่านไม่ถูกต้อง" }
+        res[0].password = undefined
+        return { data: res, require: true }
+    } catch (err) {
+        throw { data: [], require: false, err }
+    }
+}
+
+Task.updateUserById = async function (data, connection) {
+    try {
+        let str_repass = ""
+        if (data.password) {
+            const hashedPassword = await bcrypt.hash(data.password, saltRounds)
+            str_repass = `password = ${connection.escape(hashedPassword)},`
+        }
+        const sql = `
+            UPDATE ${db["base"]}.tb_user SET
+            username    = ${connection.escape(data.username)},
+            ${str_repass}
+            full_name   = ${connection.escape(data.full_name)},
+            status      = ${connection.escape(data.status)},
+            update_date = NOW(),
+            update_by   = ${connection.escape(data.update_by)}
+            WHERE user_id = ${connection.escape(data.user_id)}
+        `
+        const [res] = await connection.query(sql)
+        return { data: res, require: true }
+    } catch (err) {
+        throw { data: [], require: false, err }
+    }
+}
+
+Task.deleteUserById = async function (data, connection) {
+    try {
+        const sql = `DELETE FROM ${db["base"]}.tb_user WHERE user_id = ${connection.escape(data.user_id)}`
+        const [res] = await connection.query(sql)
+        return { data: res, require: true }
+    } catch (err) {
+        throw { data: [], require: false, err }
+    }
+}
+
+module.exports = Task

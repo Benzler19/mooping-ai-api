@@ -1,6 +1,12 @@
 module.exports = {
-    RouteController:            require('./route.controller'),
-    BorrowerController:         require('./borrower.controller'),
-    DailyTripController:        require('./daily-trip.controller'),
-    CollectionDetailController: require('./collection-detail.controller'),
+    CategoryController:        require('./category.controller'),
+    ProductController:         require('./product.controller'),
+    IngredientController:      require('./ingredient.controller'),
+    RecipeController:          require('./recipe.controller'),
+    SupplierController:        require('./supplier.controller'),
+    PurchaseController:        require('./purchase.controller'),
+    SaleOrderController:       require('./sale-order.controller'),
+    ExpenseCategoryController: require('./expense-category.controller'),
+    ExpenseController:         require('./expense.controller'),
+    ReportController:          require('./report.controller'),
 }
