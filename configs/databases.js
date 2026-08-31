@@ -11,7 +11,7 @@ const pool = mysql.createPool({
   connectionLimit: 10,
   charset: "utf8mb4",
   multipleStatements: false,
-  acquireTimeout: 3000,
+  connectTimeout: 5000, // ms — ต่อ DB ไม่ติดใน 5s ให้ fail ทันที แทนที่จะค้างเงียบๆ (option เดิม acquireTimeout ไม่ใช่ของจริงของ mysql2)
 });
 
 const generatePageBy = (data = {}) => {
@@ -53,41 +53,46 @@ const generatePageBy = (data = {}) => {
 module.exports = (req, res, next) => {
   // ฟังก์ชันมาตรฐานสำหรับการ Query ทั่วไป
   req.useConnection = async (callback) => {
-    const connection = await pool.getConnection();
+    let connection;
     try {
+      // getConnection ต้องอยู่ใน try ด้วย ไม่งั้นถ้าต่อ DB ไม่ติด (เช่น connectTimeout หมดเวลา)
+      // error จะ throw แบบไม่มีใครจับ → res.error ไม่ถูกเรียก → request ค้างไม่ตอบ client เลย
+      connection = await pool.getConnection();
       connection.generatePageBy = generatePageBy;
-      await callback(connection, 
-        (data) => res.success(data), 
+      await callback(connection,
+        (data) => res.success(data),
         (err) => res.error(err)
       );
     } catch (err) {
       res.error(err);
     } finally {
-      connection.release(); // คืน connection แน่นอน ไม่ว่าจะสำเร็จหรือพัง
+      connection?.release(); // คืน connection แน่นอน ไม่ว่าจะสำเร็จหรือพัง (เช็คก่อนว่ามี connection จริง)
     }
   };
 
   // ฟังก์ชันสำหรับ Transaction (สำคัญมาก)
   req.useTransaction = async (callback) => {
-    const connection = await pool.getConnection();
-    await connection.beginTransaction();
+    let connection;
     try {
+      // getConnection และ beginTransaction ต้องอยู่ใน try เหตุผลเดียวกับ useConnection ด้านบน
+      connection = await pool.getConnection();
+      await connection.beginTransaction();
       connection.generatePageBy = generatePageBy;
-      await callback(connection, 
+      await callback(connection,
         async (data) => {
           await connection.commit();
           res.success(data);
-        }, 
+        },
         async (err) => {
           await connection.rollback();
           res.error(err);
         }
       );
     } catch (err) {
-      await connection.rollback();
+      await connection?.rollback();
       res.error(err);
     } finally {
-      connection.release();
+      connection?.release();
     }
   };
 
